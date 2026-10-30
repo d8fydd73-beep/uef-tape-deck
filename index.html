@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>UEF Tape Deck</title>
+<meta name="description" content="Load a BBC Micro from your phone: plays UEF tape images out of the headphone socket into the BBC's cassette port.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Chakra+Petch:wght@600;700&family=VT323&display=swap">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<style>
+/* Layout: a single-column "deck" — teletext screen on top, chunky transport keys, then the tape catalogue. */
+:root{
+  --bg:#e6e8ec; --panel:#f5f6f8; --ink:#1b1e24; --muted:#5a606b; --line:#c8ccd4;
+  --key:#2b2f37; --key-ink:#eef0f3;
+  --accent:#d4471d; --accent-ink:#fff;
+  --scr:#05070a; --tt-yellow:#ffff3a; --tt-cyan:#3affff; --tt-white:#f2f2f2; --tt-green:#3aff5a; --tt-red:#ff4a3a;
+  --f-display:"Chakra Petch", "Arial Narrow", sans-serif;
+  --f-body:"Atkinson Hyperlegible", system-ui, sans-serif;
+  --f-tt:"VT323", ui-monospace, "Courier New", monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#14161a; --panel:#1d2026; --ink:#e8eaee; --muted:#9aa1ad; --line:#323742;
+  --key:#3a3f49; --key-ink:#f2f3f5; --accent:#ff6a3d; --accent-ink:#1a0d08; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#14161a; --panel:#1d2026; --ink:#e8eaee; --muted:#9aa1ad; --line:#323742;
+  --key:#3a3f49; --key-ink:#f2f3f5; --accent:#ff6a3d; --accent-ink:#1a0d08; color-scheme:dark; }
+
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:16px; line-height:1.45;}
+.wrap{max-width:560px; margin:0 auto; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); padding-block:18px 40px; display:flex; flex-direction:column; gap:16px;}
+header{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap}
+h1{font-family:var(--f-display); font-size:1.6rem; letter-spacing:.02em; margin:0; text-wrap:balance}
+h1 b{color:var(--accent)}
+.sub{color:var(--muted); font-size:.85rem}
+h2{font-family:var(--f-display); font-size:.8rem; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0}
+
+/* teletext screen */
+.screen{background:var(--scr); border-radius:6px; padding:14px 16px 12px; font-family:var(--f-tt); font-size:1.55rem; line-height:1.1; color:var(--tt-white); box-shadow:inset 0 0 0 3px #22262d; min-width:0}
+.screen .row{white-space:pre; overflow:hidden; text-overflow:clip}
+.st{color:var(--tt-yellow)} .cy{color:var(--tt-cyan)} .gr{color:var(--tt-green)} .rd{color:var(--tt-red)}
+.timebar{display:flex; justify-content:space-between; margin-top:8px; color:var(--tt-cyan); font-variant-numeric:tabular-nums}
+.track{position:relative; height:30px; margin-top:6px}
+.track .marks{position:absolute; inset:11px 0 auto 0; height:8px; background:#1c2129; border-radius:2px; overflow:hidden}
+.track .fill{position:absolute; left:0; top:0; bottom:0; background:var(--tt-cyan); opacity:.55}
+.track .mk{position:absolute; top:-2px; width:2px; height:12px; background:var(--tt-yellow)}
+.track .brk{position:absolute; top:0; width:3px; height:8px; background:var(--tt-red)}
+.track input{position:absolute; inset:0; width:100%; margin:0; opacity:0; cursor:pointer}
+.banner{margin-top:8px; color:var(--tt-yellow)}
+.banner[hidden]{display:none}
+
+/* transport keys */
+.keys{display:grid; grid-template-columns:1fr 1fr 1.6fr 1fr; gap:10px}
+.k{appearance:none; border:0; border-radius:6px; background:var(--key); color:var(--key-ink); min-height:64px; font-family:var(--f-display); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; box-shadow:0 3px 0 rgba(0,0,0,.35); cursor:pointer; -webkit-tap-highlight-color:transparent; padding:6px}
+.k:active{transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.k svg{width:24px; height:24px; fill:currentColor}
+.k.play{background:var(--accent); color:var(--accent-ink); font-size:.8rem}
+.k.play svg{width:30px; height:30px}
+.k:focus-visible, button:focus-visible, select:focus-visible, .file:focus-visible{outline:3px solid var(--tt-cyan); outline-offset:2px}
+
+/* loader */
+.load{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.btn{appearance:none; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:6px; padding:10px 14px; font:700 .95rem var(--f-body); cursor:pointer}
+.btn.primary{border-color:var(--ink)}
+a.btn{text-decoration:none; display:inline-block}
+.tapename{color:var(--muted); font-size:.9rem; min-width:0; overflow-wrap:anywhere}
+.err{color:var(--accent); font-weight:700}
+
+/* catalogue */
+.cat{display:flex; flex-direction:column; gap:8px}
+.cathead{display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap}
+.chips{display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+.chip{appearance:none; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:999px; padding:4px 10px; font:.8rem var(--f-body); cursor:pointer}
+.list{display:flex; flex-direction:column; border:1px solid var(--line); border-radius:6px; background:var(--panel); overflow:hidden}
+.file{display:grid; grid-template-columns:3.2rem 1fr; gap:4px 10px; padding:10px 12px; border:0; border-top:1px solid var(--line); background:transparent; color:var(--ink); text-align:left; cursor:pointer; font:inherit; width:100%}
+.list > :first-child{border-top:0}
+.file .tm{font-family:var(--f-tt); font-size:1.2rem; color:var(--muted); font-variant-numeric:tabular-nums}
+.file .nm{font-family:var(--f-tt); font-size:1.35rem; line-height:1}
+.file .hx{grid-column:2; font-family:var(--f-tt); font-size:1.05rem; color:var(--muted); white-space:pre; overflow-x:auto}
+.file.cur{background:color-mix(in srgb, var(--accent) 12%, transparent)}
+.file.cur .nm{color:var(--accent)}
+.brkrow{display:flex; align-items:center; gap:10px; padding:6px 12px 8px calc(3.2rem + 22px); border-top:1px dashed var(--line); font-size:.85rem; color:var(--muted)}
+.brkrow select{font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:4px 6px; flex:1; min-width:0}
+.empty{padding:14px 12px; color:var(--muted); font-size:.9rem}
+
+/* settings + help */
+details{border:1px solid var(--line); border-radius:6px; background:var(--panel)}
+summary{padding:12px 14px; cursor:pointer; font-weight:700}
+.set{display:grid; gap:14px; padding:4px 14px 16px}
+.set label{display:flex; justify-content:space-between; align-items:center; gap:12px}
+.set input[type=range]{flex:1; max-width:60%; accent-color:var(--accent)}
+.set input[type=checkbox]{width:22px; height:22px; accent-color:var(--accent)}
+.set .hint{color:var(--muted); font-size:.82rem; margin-top:-8px}
+.help{padding:0 14px 14px; font-size:.92rem}
+.help ol{padding-left:1.2rem; margin:0; display:grid; gap:6px}
+code{font-family:var(--f-tt); font-size:1.1rem}
+@media (prefers-reduced-motion: reduce){ .k:active{transform:none} }
+@media (max-width:380px){ .screen{font-size:1.3rem} .k{font-size:.62rem} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>UEF <b>Tape</b> Deck</h1>
+    <span class="sub">BBC Micro cassette loader for your phone</span>
+  </header>
+
+  <section class="screen" aria-live="polite">
+    <div class="row st" id="sStatus">Ready</div>
+    <div class="row" id="sBlock"> </div>
+    <div class="row cy" id="sOpt"> </div>
+    <div class="track">
+      <div class="marks" id="marks"><div class="fill" id="fill"></div></div>
+      <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Tape position">
+    </div>
+    <div class="timebar"><span id="tNow">0:00</span><span id="tTot">0:00</span></div>
+    <div class="banner" id="banner" hidden></div>
+  </section>
+
+  <div class="keys">
+    <button class="k" id="bPrevFile" aria-label="Previous file"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>File</button>
+    <button class="k" id="bBlock" aria-label="Back one block"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>Block</button>
+    <button class="k play" id="bPlay" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg><span id="playLbl">Play</span></button>
+    <button class="k" id="bNextFile" aria-label="Next file"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>File</button>
+  </div>
+
+  <div class="load">
+    <label class="btn primary" id="bOpen" for="fileIn">Open UEF or zip…<input type="file" id="fileIn" accept="*/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden"></label>
+    <a class="btn" href="https://www.stairwaytohell.com/" target="_blank" rel="noopener">Find games ↗</a>
+    <span class="tapename" id="tapeName"></span>
+  </div>
+
+  <section class="cat">
+    <div class="cathead">
+      <h2>Catalogue</h2>
+      <div class="chips" id="allChips"><span class="sub">All breaks:</span>
+        <button class="chip" data-all="go">Carry on</button>
+        <button class="chip" data-all="tap">Pause</button>
+        <button class="chip" data-all="w10">Wait 10s</button>
+      </div>
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+
+  <details>
+    <summary>Output settings</summary>
+    <div class="set">
+      <label for="vol">Level <input type="range" id="vol" min="5" max="100" value="80"></label>
+      <div class="hint">Phone volume at maximum, then use this to fine-tune.</div>
+      <label for="square">Square wave instead of sine <input type="checkbox" id="square"></label>
+      <label for="inv">Invert polarity <input type="checkbox" id="inv"></label>
+      <div class="hint">Try these if the BBC never gets past “Searching”.</div>
+      <label for="rewind">After pausing mid-block, resume from that block’s start <input type="checkbox" id="rewind" checked></label>
+      <label for="wake">Keep screen awake while playing <input type="checkbox" id="wake" checked></label>
+    </div>
+  </details>
+
+  <details>
+    <summary>How to load a game</summary>
+    <div class="help">
+      <ol>
+        <li>Plug the USB-C to 3.5mm adapter into the phone and the cassette lead into the BBC’s cassette socket. The motor lead isn’t used.</li>
+        <li>Turn on Do Not Disturb. A notification sound in the middle of a block will cause a load error.</li>
+        <li>On the BBC type <code>*TAPE</code> then <code>CHAIN""</code> (or <code>*RUN</code> for machine code).</li>
+        <li>Press Play. At each break the deck does what the catalogue says: carry on, pause until you press Play, or wait a set time.</li>
+        <li>If the BBC shows <code>Data?</code>, <code>Block?</code> or <code>Header?</code>, press Block to rewind one block. The BBC will pick it up again.</li>
+      </ol>
+      <p class="sub">To get games, tap Find games, download a game’s zip, then come back and tap Open UEF or zip. You don’t need to extract the zip. Accepts .uef files, compressed or not. Break settings are remembered for each tape on this phone.</p>
+    </div>
+  </details>
+</div>
+
+<script>
+// ---------- Tone generator (runs in the AudioWorklet, or main thread as fallback) ----------
+const GEN_SRC = `
+class TapeGen {
+  constructor(sr){
+    this.sr=sr; this.codes=new Uint8Array(0); this.params=new Float64Array(0);
+    this.idx=0; this.p=0; this.base=1200; this.playing=false;
+    this.phase=0; this.inc=0; this.sil=0; this.stops=new Set(); this.skip=-1;
+    this.amp=0.8; this.square=false; this.inv=1; this.tick=0; this.post=function(){};
+  }
+  msg(m){
+    switch(m.type){
+      case 'load': this.codes=m.codes; this.params=m.params; this.playing=false; this.seek(0,0,1200); break;
+      case 'seek': this.seek(m.idx,m.p,m.base); this.post({type:'pos',idx:this.idx,playing:this.playing}); break;
+      case 'play': if(this.idx<this.codes.length) this.playing=true; this.post({type:'pos',idx:this.idx,playing:this.playing}); break;
+      case 'pause': this.playing=false; this.post({type:'pos',idx:this.idx,playing:false}); break;
+      case 'stops': this.stops=new Set(m.stops); break;
+      case 'set':
+        if('amp' in m) this.amp=m.amp;
+        if('square' in m) this.square=m.square;
+        if('inv' in m) this.inv=m.inv?-1:1;
+        break;
+    }
+  }
+  seek(idx,p,base){ this.idx=idx; this.p=p; this.base=base; this.phase=0; this.sil=0; this.skip=idx; this.enter(); }
+  enter(){
+    for(;;){
+      if(this.idx>=this.codes.length){ this.inc=0; this.sil=0; if(this.playing){ this.playing=false; this.post({type:'end',idx:this.idx}); } return; }
+      const c=this.codes[this.idx];
+      if(c===3){ this.base=this.params[this.p++]; this.idx++; continue; }
+      if(c===2){ this.sil=Math.max(1,Math.round(this.params[this.p++]*this.sr)); this.inc=0; return; }
+      this.sil=0; this.inc=(c===1?2:1)*this.base/this.sr; return;
+    }
+  }
+  advance(){
+    this.idx++;
+    if(this.stops.has(this.idx) && this.skip!==this.idx){
+      this.skip=this.idx; this.playing=false; this.enter();
+      this.post({type:'break',idx:this.idx}); return;
+    }
+    this.enter();
+  }
+  render(out){
+    const n=out.length;
+    for(let i=0;i<n;i++){
+      if(!this.playing){ out[i]=0; continue; }
+      if(this.sil>0){ out[i]=0; if(--this.sil===0){ this.advance(); this.phase=0; } continue; }
+      if(this.inc===0){ out[i]=0; continue; }
+      const ph=this.phase;
+      const v=this.square ? (ph<0.5?1:-1) : Math.sin(6.283185307179586*ph);
+      out[i]=v*this.amp*this.inv;
+      this.phase=ph+this.inc;
+      if(this.phase>=1){
+        const extra=(this.phase-1)/this.inc;
+        this.advance();
+        this.phase=(this.playing&&this.inc)?extra*this.inc:0;
+      }
+    }
+    this.tick+=n;
+    if(this.tick>=4096){ this.tick=0; this.post({type:'pos',idx:this.idx,playing:this.playing}); }
+  }
+}
+`;
+const WORKLET_WRAP = `
+registerProcessor('uef-gen', class extends AudioWorkletProcessor {
+  constructor(){ super(); this.g=new TapeGen(sampleRate); this.g.post=(m)=>this.port.postMessage(m); this.port.onmessage=(e)=>this.g.msg(e.data); }
+  process(inputs, outputs){ const ch=outputs[0]; this.g.render(ch[0]); for(let k=1;k<ch.length;k++) ch[k].set(ch[0]); return true; }
+});
+`;
+
+// ---------- BBC tape CRC (CRC-16, poly &1021, stored high byte first) ----------
+function bbcCrc(bytes, from, to){
+  let crc=0;
+  for(let i=from;i<to;i++){
+    crc^=bytes[i]<<8;
+    for(let k=0;k<8;k++){ crc = (crc&0x8000) ? ((crc<<1)^0x1021) : (crc<<1); crc&=0xFFFF; }
+  }
+  return crc;
+}
+
+// Parse a BBC tape block header at d[p] (d[p] must be the &2A sync byte).
+function parseBlock(d,p){
+  if(d[p]!==0x2A) return null;
+  let q=p+1, name='';
+  while(q<d.length && d[q]!==0 && q-p<=10){ name+=String.fromCharCode(d[q]); q++; }
+  if(q>=d.length || d[q]!==0 || name.length===0) return null;
+  q++;
+  if(q+19>d.length) return null;
+  const u32=(o)=>(d[o]|(d[o+1]<<8)|(d[o+2]<<16)|(d[o+3]<<24))>>>0;
+  const load=u32(q), exec=u32(q+4), num=d[q+8]|(d[q+9]<<8), len=d[q+10]|(d[q+11]<<8), flag=d[q+12];
+  const hcrc=(d[q+17]<<8)|d[q+18];
+  if(bbcCrc(d,p+1,q+17)!==hcrc) return null;
+  const hdr=q+19-p;
+  const total=hdr+(len>0?len+2:0);
+  return {name, load, exec, num, len, flag, total};
+}
+
+// ---------- UEF → compact cycle stream ----------
+// codes: 0 = one low cycle (base Hz), 1 = one high cycle (2×base), 2 = silence (secs in params), 3 = new base freq (in params)
+function isUEF(b){ const s='UEF File!'; for(let i=0;i<9;i++) if(b[i]!==s.charCodeAt(i)) return false; return b[9]===0; }
+
+function compileUEF(b){
+  if(!isUEF(b)) throw new Error('This file has no “UEF File!” header, so it isn’t a UEF tape image.');
+  let codes=new Uint8Array(1<<20), n=0;
+  const push=(c)=>{ if(n>=codes.length){ const nc=new Uint8Array(codes.length*2); nc.set(codes); codes=nc; } codes[n++]=c; };
+  const params=[];
+  let baud=1200, base=1200;
+  const cyc=(hi,count)=>{ for(let i=0;i<count;i++) push(hi); };
+  const bit=(v)=>{ if(baud===300){ v?cyc(1,8):cyc(0,4); } else { v?cyc(1,2):cyc(0,1); } };
+  const byte8=(v)=>{ bit(0); for(let k=0;k<8;k++) bit((v>>k)&1); bit(1); };
+  const blocks=[], breaks=[];
+  let inLead=false, leadStart=0, dataSeen=false, breakSinceData=false;
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+
+  const gap=(s)=>{
+    if(!(s>0)) return;
+    inLead=false;
+    if(s>=1 && dataSeen && !breakSinceData){ breaks.push({idx:n, kind:'gap', secs:s}); breakSinceData=true; }
+    push(2); params.push(s);
+  };
+  const scanBlocks=(d,byteIdx,firstLead)=>{
+    let p=0, first=true, last=null, lastBlk=null;
+    while(p<d.length && d[p]!==0x2A && p<4) p++;
+    while(p<d.length){
+      const h=parseBlock(d,p);
+      if(!h) break;
+      const end=Math.min(d.length,p+h.total);
+      const blk=Object.assign(h,{lead:first?firstLead:byteIdx[p], start:byteIdx[p], end:byteIdx[end]});
+      blocks.push(blk); first=false; last=h; lastBlk=blk; p=end;
+    }
+    if(lastBlk && (lastBlk.flag&0x80)){ breaks.push({idx:lastBlk.end, kind:'file', blk:lastBlk}); breakSinceData=true; }
+  };
+
+  let pos=12;
+  while(pos+6<=b.length){
+    const id=b[pos]|(b[pos+1]<<8);
+    const len=(b[pos+2]|(b[pos+3]<<8)|(b[pos+4]<<16)|(b[pos+5]<<24))>>>0;
+    const off=pos+6;
+    const d=b.subarray(off,Math.min(b.length,off+len));
+    pos=off+len;
+    const u16=(o)=>d[o]|(d[o+1]<<8);
+    switch(id){
+      case 0x0100: case 0x0101: {
+        const start=n; breakSinceData=false;
+        const byteIdx=new Uint32Array(d.length+1);
+        for(let i=0;i<d.length;i++){ byteIdx[i]=n; byte8(d[i]); }
+        byteIdx[d.length]=n;
+        scanBlocks(d,byteIdx,inLead?leadStart:start);
+        inLead=false; dataSeen=true; break;
+      }
+      case 0x0102: {
+        breakSinceData=false;
+        const nb=Math.max(0,(d.length-1)*8-d[0]);
+        for(let i=0;i<nb;i++) bit((d[1+(i>>3)]>>(i&7))&1);
+        inLead=false; dataSeen=true; break;
+      }
+      case 0x0104: {
+        breakSinceData=false;
+        const nb=d[0], par=String.fromCharCode(d[1]); let stop=d[2]; if(stop>127) stop-=256;
+        for(let i=3;i<d.length;i++){
+          const v=d[i]; bit(0); let ones=0;
+          for(let k=0;k<nb;k++){ const x=(v>>k)&1; ones+=x; bit(x); }
+          if(par==='E') bit(ones&1); else if(par==='O') bit((ones&1)^1);
+          for(let k=0;k<Math.abs(stop);k++) bit(1);
+          if(stop<0) cyc(1,1);
+        }
+        inLead=false; dataSeen=true; break;
+      }
+      case 0x0110: if(!inLead){ inLead=true; leadStart=n; } cyc(1,u16(0)); break;
+      case 0x0111: if(!inLead){ inLead=true; leadStart=n; } cyc(1,u16(0)); byte8(0xAA); cyc(1,u16(2)); break;
+      case 0x0112: gap(u16(0)/(2*base)); break;
+      case 0x0116: gap(dv.getFloat32(off,true)); break;
+      case 0x0113: { const f=dv.getFloat32(off,true); if(f>100&&f<10000){ base=f; push(3); params.push(f); } break; }
+      case 0x0114: {
+        const count=d[0]|(d[1]<<8)|(d[2]<<16);
+        for(let i=0;i<count;i++) push((d[5+(i>>3)]>>(7-(i&7)))&1);
+        break;
+      }
+      case 0x0117: { const r=u16(0); baud=(r===300)?300:1200; break; }
+      default: break;
+    }
+  }
+  codes=codes.slice(0,n);
+
+  // timing table every 1024 codes
+  const K=(n>>10)+1;
+  const tT=new Float64Array(K), pT=new Int32Array(K), bT=new Float64Array(K);
+  let t=0, p=0; base=1200;
+  for(let i=0;i<=n;i++){
+    if((i&1023)===0){ const k=i>>10; tT[k]=t; pT[k]=p; bT[k]=base; }
+    if(i===n) break;
+    const c=codes[i];
+    if(c===0) t+=1/base; else if(c===1) t+=0.5/base; else if(c===2) t+=params[p++]; else base=params[p++];
+  }
+  const tape={codes, params:Float64Array.from(params), n, duration:t, tT, pT, bT, blocks, breaks};
+
+  // group blocks into files
+  const files=[]; let cur=null;
+  for(const blk of blocks){
+    if(!cur || blk.num===0 || blk.name!==cur.name || cur.done){
+      cur={name:blk.name, load:blk.load, exec:blk.exec, blocks:[], len:0, lead:blk.lead, end:blk.end, done:false, locked:false};
+      files.push(cur);
+    }
+    blk.file=cur; blk.offset=cur.len;
+    cur.blocks.push(blk); cur.len+=blk.len; cur.end=blk.end;
+    if(blk.flag&1) cur.locked=true;
+    if(blk.flag&0x80) cur.done=true;
+  }
+  tape.files=files;
+  for(const br of breaks) if(br.blk) br.file=br.blk.file;
+  for(const f of files) f.t=stateAt(tape,f.lead).t;
+  for(const br of breaks) br.t=stateAt(tape,br.idx).t;
+  for(const blk of blocks){ blk.tLead=stateAt(tape,blk.lead).t; }
+  return tape;
+}
+
+function stateAt(tape,idx){
+  if(idx>=tape.n){ const k=tape.n>>10; let t=tape.tT[k],p=tape.pT[k],base=tape.bT[k]; for(let i=k<<10;i<tape.n;i++){ const c=tape.codes[i]; if(c===0)t+=1/base; else if(c===1)t+=0.5/base; else if(c===2)t+=tape.params[p++]; else base=tape.params[p++]; } return {t,p,base,idx:tape.n}; }
+  const k=idx>>10; let t=tape.tT[k], p=tape.pT[k], base=tape.bT[k];
+  for(let i=k<<10;i<idx;i++){ const c=tape.codes[i]; if(c===0)t+=1/base; else if(c===1)t+=0.5/base; else if(c===2)t+=tape.params[p++]; else base=tape.params[p++]; }
+  return {t,p,base,idx};
+}
+function idxAtTime(tape,time){
+  let lo=0, hi=tape.tT.length-1;
+  while(lo<hi){ const m=(lo+hi+1)>>1; if(tape.tT[m]<=time) lo=m; else hi=m-1; }
+  let i=lo<<10, t=tape.tT[lo], p=tape.pT[lo], base=tape.bT[lo];
+  while(i<tape.n){
+    const c=tape.codes[i]; let dt=0;
+    if(c===0) dt=1/base; else if(c===1) dt=0.5/base; else if(c===2) dt=tape.params[p];
+    if(t+dt>time) break;
+    t+=dt; if(c>=2) p++; if(c===3) base=tape.params[p-1]; i++;
+  }
+  return i;
+}
+
+async function gunzipIfNeeded(u8){
+  if(u8[0]!==0x1F || u8[1]!==0x8B) return u8;
+  if(typeof DecompressionStream==='undefined') throw new Error('This browser can’t unzip compressed UEF files. Try Chrome.');
+  const s=new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+
+// ---------- Built-in demo tape: two tokenised BBC BASIC programs ----------
+function basicProg(lines){
+  const out=[];
+  for(const [num,content] of lines){
+    out.push(0x0D, num>>8, num&255, content.length+4, ...content);
+  }
+  out.push(0x0D,0xFF);
+  return out;
+}
+const txt=(s)=>Array.from(s,(c)=>c.charCodeAt(0));
+function buildDemoUEF(){
+  const out=[...txt('UEF File!'),0,10,0];
+  const chunk=(id,data)=>{ const l=data.length; out.push(id&255,id>>8,l&255,(l>>8)&255,(l>>16)&255,(l>>>24)&255,...data); };
+  const carrier=(cycles)=>chunk(0x0110,[cycles&255,cycles>>8]);
+  const gap2400=(units)=>chunk(0x0112,[units&255,units>>8]);
+  const file=(name,data,load,exec)=>{
+    const nb=Math.max(1,Math.ceil(data.length/256));
+    for(let b=0;b<nb;b++){
+      const part=data.slice(b*256,b*256+256);
+      const hdr=[...txt(name),0];
+      const le32=(v)=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255];
+      hdr.push(...le32(load),...le32(exec),b&255,b>>8,part.length&255,part.length>>8,(b===nb-1)?0x80:0,0,0,0,0);
+      const hc=bbcCrc(hdr,0,hdr.length);
+      const blk=[0x2A,...hdr,hc>>8,hc&255];
+      if(part.length){ const dc=bbcCrc(part,0,part.length); blk.push(...part,dc>>8,dc&255); }
+      carrier(b===0?12240:1440);
+      chunk(0x0100,blk);
+    }
+    carrier(2400);
+  };
+  const p1=basicProg([
+    [10,[0xF1,...txt(' "LOADED FROM A PHONE"')]],
+    [20,[0xF1,...txt(' "NOW LOADING PART 2..."')]],
+    [30,[0xD7,...txt(' "PART2"')]],
+  ]);
+  const rem=(n)=>[0xF4,...txt(' '+'This is filler to make PART2 span several tape blocks.'.padEnd(n,'.'))];
+  const p2=basicProg([
+    [10,[0xF1,...txt(' "PART 2 LOADED OK"')]],
+    [20,rem(200)],[30,rem(200)],[40,rem(200)],
+  ]);
+  gap2400(2400);
+  file('DEMO',p1,0xFFFF0E00,0xFFFF8023);
+  gap2400(4800);
+  file('PART2',p2,0xFFFF0E00,0xFFFF8023);
+  return new Uint8Array(out);
+}
+
+if(typeof module!=='undefined') module.exports={GEN_SRC,compileUEF,stateAt,idxAtTime,buildDemoUEF,bbcCrc};
+
+
+const $=(id)=>document.getElementById(id);
+const store={ get(k,d){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} } };
+const hex=(v,w)=>v.toString(16).toUpperCase().padStart(w,'0');
+const fmt=(t)=>{ t=Math.max(0,t); const m=Math.floor(t/60), s=Math.floor(t%60); return m+':'+String(s).padStart(2,'0'); };
+const ACTIONS=[['go','carry on playing'],['tap','pause until I press Play'],['w5','wait 5 seconds'],['w10','wait 10 seconds'],['w20','wait 20 seconds'],['w30','wait 30 seconds'],['w60','wait 60 seconds']];
+
+let settings=Object.assign({vol:80,square:false,inv:false,rewind:true,wake:true}, store.get('uefdeck.settings',{}));
+let tape=null, tapeName='', actions={};
+let ctx=null, port=null, curIdx=0, playing=false, userPausedAt=-1, waitTimer=null, waitLeft=0, wakeLock=null, ended=false, breakMsg='';
+
+// ---------- loading tapes ----------
+function loadTape(bytes,name,isDemo){
+  tape=compileUEF(bytes); tapeName=name;
+  const saved=store.get('uefdeck.tape.'+name,null);
+  actions={};
+  tape.breaks.forEach((b,i)=>{ actions[i]=(saved&&saved[i])||(b.kind==='file'?'tap':'go'); });
+  curIdx=0; playing=false; ended=false; userPausedAt=-1; clearWait(); breakMsg='';
+  $('tapeName').innerHTML='';
+  $('tapeName').textContent=(isDemo?'Example: ':'')+name;
+  if(port){ port.postMessage({type:'pause'}); port.postMessage({type:'load',codes:tape.codes.slice(),params:tape.params.slice()}); sendStops(); sendSettings(); }
+  buildMarks(); renderList(); render();
+}
+$('fileIn').onchange=async(e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const raw=new Uint8Array(await f.arrayBuffer());
+    if(raw[0]===0x50 && raw[1]===0x4B){
+      const ents=readZip(raw).filter(z=>/\.uef(\.gz)?$/i.test(z.name));
+      if(!ents.length) throw new Error('No .uef file found inside '+f.name+'.');
+      const pick=async(z)=>{ try{ loadTape(await gunzipIfNeeded(await unzipEntry(raw,z)), z.name.split('/').pop(), false); }catch(err){ showErr(err); } };
+      if(ents.length===1) await pick(ents[0]);
+      else {
+        const box=$('tapeName'); box.innerHTML=''; box.append(document.createTextNode(f.name+' has several tapes: '));
+        ents.forEach(z=>{ const b=document.createElement('button'); b.className='chip'; b.textContent=z.name.split('/').pop(); b.onclick=()=>pick(z); box.append(b,' '); });
+      }
+    } else {
+      loadTape(await gunzipIfNeeded(raw),f.name,false);
+    }
+  }catch(err){ showErr(err); }
+  e.target.value='';
+};
+function showErr(err){ $('tapeName').innerHTML=''; const s=document.createElement('span'); s.className='err'; s.textContent=err.message||String(err); $('tapeName').append(s); }
+function readZip(b){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  let e=-1; for(let i=b.length-22;i>=Math.max(0,b.length-66000);i--){ if(dv.getUint32(i,true)===0x06054b50){ e=i; break; } }
+  if(e<0) throw new Error('This zip file looks damaged.');
+  const count=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out=[];
+  for(let k=0;k<count && dv.getUint32(p,true)===0x02014b50;k++){
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), lo=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(b.subarray(p+46,p+46+nl));
+    out.push({name,method,csize,lo}); p+=46+nl+xl+cl;
+  }
+  return out;
+}
+async function unzipEntry(b,z){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  const start=z.lo+30+dv.getUint16(z.lo+26,true)+dv.getUint16(z.lo+28,true);
+  const data=b.subarray(start,start+z.csize);
+  if(z.method===0) return data;
+  if(z.method!==8) throw new Error('This zip uses a compression type the browser can’t open. Extract it on the PC instead.');
+  if(typeof DecompressionStream==='undefined') throw new Error('This browser can’t open zip files. Try Chrome.');
+  const s=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+
+// ---------- audio ----------
+async function ensureAudio(){
+  if(ctx){ if(ctx.state!=='running') await ctx.resume(); return; }
+  ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'playback'});
+  let node;
+  try{
+    const url=URL.createObjectURL(new Blob([GEN_SRC+WORKLET_WRAP],{type:'application/javascript'}));
+    await ctx.audioWorklet.addModule(url);
+    node=new AudioWorkletNode(ctx,'uef-gen',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2]});
+    port=node.port; port.onmessage=(e)=>onGen(e.data);
+  }catch(e){
+    const G=new Function(GEN_SRC+';return TapeGen;')();
+    const g=new G(ctx.sampleRate); g.post=(m)=>setTimeout(()=>onGen(m),0);
+    node=ctx.createScriptProcessor(4096,0,2);
+    node.onaudioprocess=(ev)=>{ const L=ev.outputBuffer.getChannelData(0); g.render(L); ev.outputBuffer.getChannelData(1).set(L); };
+    port={postMessage:(m)=>g.msg(m)};
+  }
+  node.connect(ctx.destination);
+  port.postMessage({type:'load',codes:tape.codes.slice(),params:tape.params.slice()});
+  sendStops(); sendSettings(); seekTo(curIdx);
+  if(ctx.state!=='running') await ctx.resume();
+}
+function sendStops(){ if(port) port.postMessage({type:'stops',stops:tape.breaks.filter((b,i)=>actions[i]!=='go').map(b=>b.idx)}); }
+function sendSettings(){ if(port) port.postMessage({type:'set',amp:settings.vol/100,square:settings.square,inv:settings.inv}); }
+function seekTo(idx){
+  idx=Math.max(0,Math.min(tape.n,idx)); curIdx=idx; ended=false; userPausedAt=-1;
+  const s=stateAt(tape,idx);
+  if(port) port.postMessage({type:'seek',idx,p:s.p,base:s.base});
+  render();
+}
+function onGen(m){
+  curIdx=m.idx;
+  if(m.type==='pos'){ playing=m.playing; }
+  else if(m.type==='end'){ playing=false; ended=true; releaseWake(); }
+  else if(m.type==='break'){
+    playing=false;
+    const i=tape.breaks.findIndex(b=>b.idx===m.idx);
+    const b=tape.breaks[i], a=actions[i]||'tap';
+    const what=b&&b.file?('End of '+b.file.name):'Silence';
+    if(a==='tap'){ breakMsg=what+'. Press Play when ready.'; releaseWake(); }
+    else if(a[0]==='w'){ startWait(+a.slice(1),what); }
+  }
+  render();
+}
+async function play(){
+  if(!tape) return;
+  clearWait(); breakMsg='';
+  await ensureAudio();
+  if(ended){ seekTo(0); }
+  if(settings.rewind && userPausedAt>=0){
+    const blk=blockAt(curIdx);
+    if(blk && curIdx>blk.start && curIdx<blk.end) seekTo(blk.lead);
+  }
+  userPausedAt=-1;
+  port.postMessage({type:'play'}); playing=true; grabWake(); render();
+}
+function pause(){
+  clearWait();
+  if(port) port.postMessage({type:'pause'});
+  if(playing) userPausedAt=curIdx;
+  playing=false; releaseWake(); render();
+}
+function startWait(secs,what){
+  clearWait(); waitLeft=secs; breakMsg='';
+  const tick=()=>{ if(waitLeft<=0){ clearWait(); play(); return; } breakMsg=what+'. Next in '+waitLeft+'s (Play skips the wait)'; waitLeft--; render(); };
+  tick(); waitTimer=setInterval(tick,1000);
+}
+function clearWait(){ if(waitTimer){ clearInterval(waitTimer); waitTimer=null; } }
+async function grabWake(){ if(!settings.wake||wakeLock) return; try{ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); }catch(e){} }
+function releaseWake(){ if(waitTimer) return; try{ wakeLock&&wakeLock.release(); }catch(e){} wakeLock=null; }
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && playing) grabWake(); });
+
+// ---------- navigation ----------
+function blockAt(idx){ let r=null; for(const b of tape.blocks){ if(b.lead<=idx) r=b; else break; } return r; }
+function marks(){ const m=tape.files.map(f=>({idx:f.lead,t:f.t})); tape.breaks.forEach(b=>{ if(b.kind==='gap') m.push({idx:b.idx,t:b.t}); }); return m.sort((a,b)=>a.idx-b.idx); }
+$('bPlay').onclick=()=>{ (playing||waitTimer)?pause():play(); };
+$('bBlock').onclick=()=>{
+  if(!tape||!tape.blocks.length){ seekTo(0); return; }
+  const now=stateAt(tape,curIdx).t;
+  let i=-1; tape.blocks.forEach((b,k)=>{ if(b.lead<=curIdx) i=k; });
+  if(i<0){ seekTo(0); return; }
+  if(now-tape.blocks[i].tLead<1.5 && i>0) i--;
+  clearWait(); breakMsg=''; seekTo(tape.blocks[i].lead);
+};
+$('bPrevFile').onclick=()=>{ const now=stateAt(tape,curIdx).t; const m=marks(); let tgt=0; for(const x of m){ if(x.t<now-1.5) tgt=x.idx; } clearWait(); breakMsg=''; seekTo(tgt); };
+$('bNextFile').onclick=()=>{ const m=marks().find(x=>x.idx>curIdx); if(m){ clearWait(); breakMsg=''; seekTo(m.idx); } };
+$('scrub').oninput=(e)=>{ if(!tape) return; clearWait(); breakMsg=''; seekTo(idxAtTime(tape,tape.duration*e.target.value/1000)); };
+
+// ---------- rendering ----------
+function buildMarks(){
+  const el=$('marks'); el.querySelectorAll('.mk,.brk').forEach(x=>x.remove());
+  const D=tape.duration||1;
+  tape.files.forEach(f=>{ const d=document.createElement('div'); d.className='mk'; d.style.left=(100*f.t/D)+'%'; el.append(d); });
+  tape.breaks.forEach((b,i)=>{ if(actions[i]==='go') return; const d=document.createElement('div'); d.className='brk'; d.style.left='calc('+(100*b.t/D)+'% - 1px)'; el.append(d); });
+}
+function optLine(f){ return f.name.padEnd(10)+' '+hex(f.blocks.length,2)+' '+hex(f.len,4)+' '+hex(f.load,8)+' '+hex(f.exec,8); }
+function render(){
+  if(!tape) return;
+  const t=stateAt(tape,curIdx).t;
+  $('tNow').textContent=fmt(t); $('tTot').textContent=fmt(tape.duration);
+  $('fill').style.width=(100*t/(tape.duration||1))+'%';
+  if(document.activeElement!==$('scrub')) $('scrub').value=Math.round(1000*t/(tape.duration||1));
+  const blk=blockAt(curIdx);
+  let status, line2='', line3='';
+  if(blk){
+    const f=blk.file;
+    const inData=curIdx>=blk.start && curIdx<blk.end;
+    line2=f.name.padEnd(10)+' '+hex(blk.num,2)+' '+hex(blk.offset+(inData?blk.len:0),4);
+    line3=hex(f.load,8)+' '+hex(f.exec,8)+(f.locked?' L':'');
+    status = inData?'Loading':'Searching';
+  } else status='Searching';
+  if(ended) status='End of tape';
+  else if(waitTimer) status='Waiting';
+  else if(!playing) status=breakMsg?'Break':(curIdx===0?'Ready':'Paused');
+  $('sStatus').textContent=status;
+  $('sStatus').className='row '+(status==='Loading'?'gr':status==='Break'||status==='Waiting'?'rd':'st');
+  $('sBlock').textContent=line2||' ';
+  $('sOpt').textContent=line3||' ';
+  $('banner').hidden=!breakMsg; $('banner').textContent=breakMsg;
+  const on=playing||!!waitTimer;
+  $('playLbl').textContent=on?'Pause':'Play';
+  $('bPlay').setAttribute('aria-label',on?'Pause':'Play');
+  $('playIcon').innerHTML=on?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4v16l13-8z"/>';
+  const cf=blk?blk.file:null;
+  document.querySelectorAll('.file').forEach(el=>el.classList.toggle('cur', cf && +el.dataset.f===tape.files.indexOf(cf)));
+}
+function renderList(){
+  const L=$('list'); L.innerHTML='';
+  const items=[];
+  tape.files.forEach((f,i)=>items.push({k:f.lead,file:f,i}));
+  tape.breaks.forEach((b,i)=>items.push({k:b.idx+0.5,brk:b,i}));
+  items.sort((a,b)=>a.k-b.k);
+  if(!tape.files.length){ const d=document.createElement('div'); d.className='empty'; d.textContent='No standard BBC file headers found. This may be a protected loader; breaks are placed at long silences instead.'; L.append(d); }
+  for(const it of items){
+    if(it.file){
+      const f=it.file, b=document.createElement('button'); b.className='file'; b.dataset.f=it.i;
+      b.innerHTML='<span class="tm"></span><span class="nm"></span><span></span><span class="hx"></span>';
+      b.querySelector('.tm').textContent=fmt(f.t);
+      b.querySelector('.nm').textContent=f.name+(f.locked?'  (locked)':'');
+      b.querySelector('.hx').textContent=optLine(f).slice(11);
+      b.setAttribute('aria-label','Go to '+f.name+' at '+fmt(f.t));
+      b.onclick=()=>{ clearWait(); breakMsg=''; seekTo(f.lead); };
+      L.append(b);
+    } else {
+      const br=it.brk, row=document.createElement('div'); row.className='brkrow';
+      const id='act'+it.i;
+      const lab=document.createElement('label'); lab.htmlFor=id; lab.textContent=br.kind==='file'?'then':('gap '+fmt(br.t)+', then');
+      const sel=document.createElement('select'); sel.id=id;
+      ACTIONS.forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.append(o); });
+      sel.value=actions[it.i];
+      sel.onchange=()=>{ actions[it.i]=sel.value; saveActions(); };
+      row.append(lab,sel); L.append(row);
+    }
+  }
+}
+function saveActions(){ store.set('uefdeck.tape.'+tapeName,actions); sendStops(); buildMarks(); }
+document.querySelectorAll('[data-all]').forEach(c=>c.onclick=()=>{ tape.breaks.forEach((b,i)=>actions[i]=c.dataset.all); saveActions(); renderList(); render(); });
+
+// ---------- settings ----------
+function bindSetting(id,key,isCheck){
+  const el=$(id); if(isCheck) el.checked=settings[key]; else el.value=settings[key];
+  el.addEventListener('input',()=>{ settings[key]=isCheck?el.checked:+el.value; store.set('uefdeck.settings',settings); sendSettings(); });
+}
+bindSetting('vol','vol'); bindSetting('square','square',true); bindSetting('inv','inv',true); bindSetting('rewind','rewind',true); bindSetting('wake','wake',true);
+
+loadTape(buildDemoUEF(),'DEMO + PART2 (two short BASIC programs)',true);
+</script>
+
+</body>
+</html>
